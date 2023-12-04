@@ -133,6 +133,10 @@ def HermiteTensor(n,x):
     return ( - sp.diff(HermiteTensor(n-1,x),x[a(n)]) + x[a(n)]*HermiteTensor(n-1,x) ).expand()
 
 def simplifyKronecker(exp):
+    
+     if ( isinstance(exp, sp.Matrix) ):
+         return exp.subs( { x : simplifyKronecker(x) for x in exp} ) 
+    
      expanded = exp.expand()
 
      if ( expanded.func == sp.Add ):
