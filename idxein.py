@@ -24,13 +24,15 @@ def unroll(a):
 
   if isinstance(a ,sp.Mul):
     for arg in a.args:
-      if ( isinstance(arg ,(sp.Mul,sp.Pow) ) ):
-        newargs += list( unroll(arg).args )
-      else:
-        newargs.append(arg)
+        unrolled = unroll(arg)
+        if ( isinstance( unrolled, sp.Mul) ):
+            newargs += list( unrolled.args )
+        else:
+            newargs.append(unrolled)
+
   elif isinstance(a,sp.Pow):
       b,e = a.as_base_exp()
-      if ( e.is_Integer ):
+      if ( e.is_Integer ) and ( e > 0):
         newargs +=  e*[b]
       else:
         return a
