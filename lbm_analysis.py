@@ -16,48 +16,54 @@ Dim = 2
 
 sp.init_printing()
 
+z = sp.Symbol( "z", complex = True)
+delta = sp.Symbol( "\\delta", real = True)
+ttau = sp.Symbol( "\\tilde\\tau", real = True)
+coeff = lambda n : sp.diff( 1/ ( 1 + ttau * ( sp.exp( delta * z) -1 ) / delta), z , n ).subs( {z : 0} ) / sp.factorial(n)
+
 rho, tt, cs = sp.symbols("\\rho, \\theta, c_s", real = True)
 u = IndexedBase("u")
 x = IndexedBase("x")
+t = sp.Symbol("t", real = True, positive = True)
 
 a  = lambda n : IdxEin("\\alpha_{}".format(n), range=(1,Dim) )
 b  = lambda n : IdxEin("\\beta_{}".format(n), range=(1,Dim) )
 e  = lambda n : IdxEin("\\eta_{}".format(n), range=(1,Dim) )
 
+c = IndexedBase("c")
+mc = lambda n : rho* computeMoment( sp.expand( sp.Mul( *[ sp.sqrt(tt+1) * cs* c[a(k)] + u[a(k)] for k in range(1,n+1) ] ) ) , c , a(1) )
 
-
-
-m = sp.Matrix( [ rho, 
-                 rho * u[a(1) ] ,
-                 rho * u[a(1) ] * u[a(2) ] + rho * cs**2 *(tt+1) *  dk( a(1), a(2) )  ,
-                 rho * u[a(1) ] * u[a(2) ]  * u[a(3) ] + rho * cs**2 *(tt+1) * ( u[a(3) ] * dk( a(1), a(2) ) +  u[a(1) ] * dk( a(2), a(3) ) +   u[a(2) ] * dk( a(1), a(3) ) ) , 
-                 rho * u[a(1) ] * u[a(2) ]  * u[a(3) ] * u[a(3) ] + rho * cs**2 *(tt+1) * ( u[a(3) ] * dk( a(1), a(2) ) +  u[a(1) ] * dk( a(2), a(3) ) +   u[a(2) ] * dk( a(1), a(3) ) ) ]] )
+m = sp.Matrix( [ mc(i) for i in range(0,5) ] )
 
 NumOfMoments = len(m)
 ConservedMoments = 3
 
-M = np.zeros( [ ConservedMoments, NumOfMoments-1] , dtype = object)
-np.fill_diagonal( M, [1,1,dk(a(1),a(2))] )
-M = sp.Matrix( M )
+def M(n):
+    M = np.zeros( [ 3,  n ] , dtype = object)
+    np.fill_diagonal( M , [1,1,dk(a(1),a(2))] )
+    return sp.Matrix( M )
 
-L = np.zeros( [ NumOfMoments-1, NumOfMoments] , dtype = object)
-np.fill_diagonal( L, 1)
-L = sp.Matrix(L)
+def L(n):
+    L = np.zeros( [ n-1, n ] , dtype = object)
+    np.fill_diagonal( L, 1)
+    return sp.Matrix(L)
 
-U = np.zeros( [ NumOfMoments-1, NumOfMoments] , dtype = object)
-np.fill_diagonal( U[:,1:], [ dk(a(n),e(1)) for n in range(1,NumOfMoments) ] )
-U = sp.Matrix(U)
+def U(n, et = e(1) ):
+    U = np.zeros( [ n-1, n] , dtype = object)
+    np.fill_diagonal( U[:,1:], [ dk(a(k),et ) for k in range(1,n) ] )
+    return sp.Matrix(U)
 
 var = lambda b : [rho, u[b] , tt  ] 
-J = lambda b : m.jacobian(  [rho, u[b] , tt  ] )
+J = lambda b, n = None  : ( m if n == None else sp.Matrix( m[:n] ) ).jacobian(  [rho, u[b] , tt  ] )
 
-# Simplifica Delta de Kronecker e fazer a substituição do símbolo a_1 por beta
-MLJ = simplifyKronecker( M @ L @ J( b(1) ) ).subs( { dk( b(1), a(1)) : 1 } ).xreplace( { b(1) : a(1) } )
-MUJ = simplifyKronecker( M @ U @ J( b(1) ) ).subs( { dk( b(1), a(1)) : 1 } ).xreplace( { b(1) : a(1) } )
+n = len(m)
+MLJ = simplifyKronecker( M(n-1) @ L(n) @ J( b(1) , n  ) ).subs( { dk( b(1), a(1)) : 1 } ).xreplace( { b(1) : a(1) } )
+MUJ = simplifyKronecker( M(n-1) @ U(n) @ J( b(1) , n  ) ).subs( { dk( b(1), a(1)) : 1 } ).xreplace( { b(1) : a(1) } )
+TG = lambda bt = b(1), et = e(1) : simplifyKronecker( - MLJ.inv() @ MUJ ).xreplace( { a(1) : bt, e(1) : et } )
 
 grad = lambda e,b : sp.Matrix( [ D(v, x[e] ) for v in var(b) ] )
+dt   = lambda b : sp.Matrix( [ D(v,t) for v in var( b ) ] )
 
-TG = lambda b : simplifyKronecker( - MLJ.inv() @ MUJ ).xreplace( { a(1) : b } )
-
+sp.Eq( dt(b(1)), simplifyKronecker( TG(b(1)) @ grad( e(1), b(1) ) ) )
 
 
