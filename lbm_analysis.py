@@ -24,10 +24,14 @@ a  = lambda n : IdxEin("\\alpha_{}".format(n), range=(1,Dim) )
 b  = lambda n : IdxEin("\\beta_{}".format(n), range=(1,Dim) )
 e  = lambda n : IdxEin("\\eta_{}".format(n), range=(1,Dim) )
 
+
+
+
 m = sp.Matrix( [ rho, 
                  rho * u[a(1) ] ,
                  rho * u[a(1) ] * u[a(2) ] + rho * cs**2 *(tt+1) *  dk( a(1), a(2) )  ,
-                 rho * u[a(1) ] * u[a(2) ]  * u[a(3) ] + rho * cs**2 *(tt+1) * ( u[a(3) ] * dk( a(1), a(2) ) +  u[a(1) ] * dk( a(2), a(3) ) +   u[a(2) ] * dk( a(1), a(3) ) ) ] )
+                 rho * u[a(1) ] * u[a(2) ]  * u[a(3) ] + rho * cs**2 *(tt+1) * ( u[a(3) ] * dk( a(1), a(2) ) +  u[a(1) ] * dk( a(2), a(3) ) +   u[a(2) ] * dk( a(1), a(3) ) ) , 
+                 rho * u[a(1) ] * u[a(2) ]  * u[a(3) ] * u[a(3) ] + rho * cs**2 *(tt+1) * ( u[a(3) ] * dk( a(1), a(2) ) +  u[a(1) ] * dk( a(2), a(3) ) +   u[a(2) ] * dk( a(1), a(3) ) ) ]] )
 
 NumOfMoments = len(m)
 ConservedMoments = 3
@@ -45,11 +49,11 @@ np.fill_diagonal( U[:,1:], [ dk(a(n),e(1)) for n in range(1,NumOfMoments) ] )
 U = sp.Matrix(U)
 
 var = lambda b : [rho, u[b] , tt  ] 
-Jb = lambda b : m.jacobian(  [rho, u[b] , tt  ] )
+J = lambda b : m.jacobian(  [rho, u[b] , tt  ] )
 
 # Simplifica Delta de Kronecker e fazer a substituição do símbolo a_1 por beta
-MLJ = simplifyKronecker( M @ L @ Jb( b(1) ) ).subs( { dk( b(1), a(1)) : 1 } ).xreplace( { b(1) : a(1) } )
-MUJ = simplifyKronecker( M @ U @ Jb( b(1) ) ).subs( { dk( b(1), a(1)) : 1 } ).xreplace( { b(1) : a(1) } )
+MLJ = simplifyKronecker( M @ L @ J( b(1) ) ).subs( { dk( b(1), a(1)) : 1 } ).xreplace( { b(1) : a(1) } )
+MUJ = simplifyKronecker( M @ U @ J( b(1) ) ).subs( { dk( b(1), a(1)) : 1 } ).xreplace( { b(1) : a(1) } )
 
 grad = lambda e,b : sp.Matrix( [ D(v, x[e] ) for v in var(b) ] )
 
