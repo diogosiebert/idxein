@@ -67,4 +67,7 @@ dt   = lambda b : sp.Matrix( [ D(v,t) for v in var( b ) ] )
 
 sp.Eq( dt(b(1)), simplifyKronecker( TG(b(1)) @ grad( e(1), b(1) ) ) )
 grad = D( sp.Matrix( [ rho, u[b(1)] , tt ] ) , x[ e(1) ]  )
-U( 4, e(2) ) @ simplifyKronecker( ( - L(5) @ J(b(2), 5) @ simplifyKronecker( (MLJ.inv() @ MUJ ) ).xreplace( { a(1) : b(2) } ) + U( 5, e(1) ) @ J( b(1), 5 ) ) @ grad )
+O = U( 4, e(2) ) @ simplifyKronecker( ( - L(5) @ J(b(2), 5) @ simplifyKronecker( (MLJ.inv() @ MUJ ) ).xreplace( { a(1) : b(2) } ) + U( 5, e(1) ) @ J( b(1), 5 ) ) @ grad )
+
+
+sp.expand( simplifyD( simplifyKronecker( M(3) @ simplifyKronecker( simplifyD( D( simplifyKronecker( O ) , x[e(2)] ) ) ) )[2]) )

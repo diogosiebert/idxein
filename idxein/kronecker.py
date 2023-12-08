@@ -139,6 +139,9 @@ def getEinsteinIndices(args):
     idxList = []
     for arg in args:
       if hasattr(arg, "indices"): idxList+= filter( lambda x : isinstance(x,IdxEin) ,arg.indices )
+      if isinstance( arg,  D):
+          idxList +=  getEinsteinIndices(arg.variables)
+          idxList +=  getEinsteinIndices( (arg.expr,) )
       idxList +=  getEinsteinIndices(arg.args)
     return idxList
 
@@ -166,6 +169,7 @@ def simplifyKronecker(exp):
                 return simplifyKronecker( sp.Mul(*otherArgs).xreplace( { arg.indices[0] : arg.indices[1]}) )
             if arg.indices[1] in otherIdx:
                 return simplifyKronecker( sp.Mul(*otherArgs).xreplace( { arg.indices[1] : arg.indices[0]}) )
+
      return unrolled
 
 
@@ -242,6 +246,32 @@ def replaceIndeces( exp , idxDict = None):
     
     return exp
 
+
+def simplifyD( exp , constants = () ):
+
+    if isinstance(exp,sp.Matrix):
+        return sp.Matrix( [ simplifyD(x , constants = constants) for x in exp ] ).reshape( *exp.shape )  
+
+    if (exp.func == sp.Mul):
+        return sp.Mul( *[simplifyD(arg) for arg in exp.args ] )
+
+    if (exp.func == D):
+
+        if hasattr( exp.expr, "is_Number") :
+            if exp.expr.is_Number :
+                return S.Zero
+        
+        if (exp.expr.func == sp.Mul):
+            terms = unroll(exp.expr)            
+            const = [ arg for arg in terms.args if ( (arg in constants) or isinstance(arg, KroneckerDelta) or (arg.is_Number)) ]
+            funct = [ arg for arg in terms.args if not arg in const ]
+            return sp.Mul( *( sp.Mul( *const ) ,  D(sp.Mul( *funct ), *exp.variables ) ) )                    
+
+        if (exp.expr.func == sp.Add):
+            return sp.Add( *[ simplifyD( D( arg  , *exp.variables ) , constants =constants )  for arg in exp.expr.args ] )        
+
+    return exp
+
 def splitSum( term, index, var = None):
     
     exp = sp.expand(term)
@@ -268,21 +298,3 @@ def splitSum( term, index, var = None):
         return sp.expand( sp.Mul( *keep )  ) 
 
     return sp.Mul( term , S.One , evaluate=False)  
-
-def simplifyD( exp , constants = () ):
-
-    if isinstance(exp,sp.Matrix):
-        return exp.subs( { a: simplifyD(a , constants = constants) for a in exp } )
-
-    if (exp.func == D):
-  
-        if (exp.expr.func == sp.Mul):
-            terms = unroll(exp.expr)            
-            const = [ arg for arg in terms.args if ( (arg in constants) or isinstance(arg, KroneckerDelta) or (arg.is_Number)) ]
-            funct = [ arg for arg in terms.args if not arg in const ]
-            return sp.Mul( *( sp.Mul( *const ) ,  D(sp.Mul( *funct ), *exp.variables ) ) )                    
-
-        if (exp.expr.func == sp.Add):
-            return sp.Add( *[ simplifyD( D( arg  , *exp.variables ) , constants =constants )  for arg in exp.expr.args ] )        
-
-    return exp
