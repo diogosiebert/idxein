@@ -19,6 +19,9 @@ from itertools import combinations_with_replacement
 def unroll(a):
   newargs = []
 
+  if isinstance(a , D):
+      return D( unroll( a.expr ) , *a.variables )     
+
   if isinstance(a ,sp.Add):
       return sp.Add( *[ unroll(arg) for arg in a.args ] )
 
@@ -114,14 +117,17 @@ class D(Derivative):
 
     def __new__(cls, expr, *variables, **kwargs):
         
+        if (isinstance(expr,D)):
+            return D(expr.expr, *(variables + expr.variables), **kwargs)
+                    
         if (isinstance(expr,sp.Matrix)):
             return sp.Matrix( [ D( x,  *variables, **kwargs) for x in expr ]  ).reshape( *expr.shape )
 
-        return super().__new__(cls,expr, *variables, *kwargs)
+        return super().__new__(cls, expr, *variables, *kwargs)
 
     def _latex(self, printer):
         # Customize the LaTeX representation of the Derivative object here
-        return f'\\partial_{{ {latex( self.variables[0].indices[0] if self.variables[0].is_Indexed else self.variables[0])} }} \\left( {latex(self.expr)} \\right)'
+        return ''.join( [ f'\\partial_{{ {latex( var.indices[0] if var.is_Indexed else var)} }}' for var in self.variables ] + [f'\\left( {latex(self.expr)} \\right)'])
 
     def subs(self, varDict ):
         return self.func( *( arg.subs( varDict ) for arg in self.args ) )
@@ -262,3 +268,21 @@ def splitSum( term, index, var = None):
         return sp.expand( sp.Mul( *keep )  ) 
 
     return sp.Mul( term , S.One , evaluate=False)  
+
+def simplifyD( exp , constants = () ):
+
+    if isinstance(exp,sp.Matrix):
+        return exp.subs( { a: simplifyD(a , constants = constants) for a in exp } )
+
+    if (exp.func == D):
+  
+        if (exp.expr.func == sp.Mul):
+            terms = unroll(exp.expr)            
+            const = [ arg for arg in terms.args if ( (arg in constants) or isinstance(arg, KroneckerDelta) or (arg.is_Number)) ]
+            funct = [ arg for arg in terms.args if not arg in const ]
+            return sp.Mul( *( sp.Mul( *const ) ,  D(sp.Mul( *funct ), *exp.variables ) ) )                    
+
+        if (exp.expr.func == sp.Add):
+            return sp.Add( *[ simplifyD( D( arg  , *exp.variables ) , constants =constants )  for arg in exp.expr.args ] )        
+
+    return exp
