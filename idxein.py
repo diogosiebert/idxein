@@ -112,6 +112,13 @@ class IndexedBase( sp.IndexedBase):
 
 class D(Derivative):
 
+    def __new__(cls, expr, *variables, **kwargs):
+        
+        if (isinstance(expr,sp.Matrix)):
+            return sp.Matrix( [ D( x,  *variables, **kwargs) for x in expr ]  ).reshape( *expr.shape )
+
+        return super().__new__(cls,expr, *variables, *kwargs)
+
     def _latex(self, printer):
         # Customize the LaTeX representation of the Derivative object here
         return f'\\partial_{{ {latex( self.variables[0].indices[0] if self.variables[0].is_Indexed else self.variables[0])} }} \\left( {latex(self.expr)} \\right)'
