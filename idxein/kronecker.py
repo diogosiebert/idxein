@@ -140,9 +140,10 @@ def getEinsteinIndices(args):
     for arg in args:
       if hasattr(arg, "indices"): idxList+= filter( lambda x : isinstance(x,IdxEin) ,arg.indices )
       if isinstance( arg,  D):
-          idxList +=  getEinsteinIndices(arg.variables)
+          idxList +=  getEinsteinIndices( arg.variables)
           idxList +=  getEinsteinIndices( (arg.expr,) )
-      idxList +=  getEinsteinIndices(arg.args)
+      else:
+          idxList +=  getEinsteinIndices(arg.args)
     return idxList
 
 def HermiteTensor(n,x):
