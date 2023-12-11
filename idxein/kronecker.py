@@ -151,15 +151,39 @@ def HermiteTensor(n,x):
   else:
     return ( - sp.diff(HermiteTensor(n-1,x),x[a(n)]) + x[a(n)]*HermiteTensor(n-1,x) ).expand()
 
-def simplifyKronecker(exp):
+def simplifyKronecker(exp, sumcancel = True):
     
      if ( isinstance(exp, sp.Matrix) ):
-         return exp.subs( { x : simplifyKronecker(x) for x in exp} ) 
+         return exp.subs( { x : simplifyKronecker(x,sumcancel) for x in exp} ) 
     
      expanded = exp.expand()
 
      if ( expanded.func == sp.Add ):
-         return sp.Add( *( simplifyKronecker(arg) for arg in expanded.args) )
+         
+         newexp = sp.Add( *( simplifyKronecker(arg) for arg in expanded.args) )
+
+         if (sumcancel) and (newexp.func == sp.Add):     
+             
+             sumIndices  = set()
+            
+             for arg in newexp.args:
+                 indices = getEinsteinIndices( arg.args )
+                 counts = Counter( indices )
+                 sumIndices = sumIndices.union( [element for element, count in counts.items() if count == 2] )           
+                
+             sumIndices = sorted( list( sumIndices) , key = lambda x: x.name )
+            
+             newargs =  []
+             
+             for arg in newexp.args:
+                 indices = getEinsteinIndices( arg.args )
+                 counts = Counter( indices )
+                 argIndices = [element for element, count in counts.items() if count == 2]
+                 newargs.append( arg.xreplace(  { old : sumIndices[n] for n, old in enumerate( argIndices)  } ) )
+                     
+             return sp.Add( *newargs )
+         else:
+             return newexp
 
      unrolled = unroll(expanded)
      for n,arg in enumerate(unrolled.args):
