@@ -146,10 +146,10 @@ def getEinsteinIndices(args):
           idxList +=  getEinsteinIndices(arg.args)
     return idxList
 
-def HermiteTensor(n,x):
-  if (n==0):  return S.One
+def HermiteTensor( idx , x):
+  if ( len(idx)==0):  return S.One
   else:
-    return ( - sp.diff(HermiteTensor(n-1,x),x[a(n)]) + x[a(n)]*HermiteTensor(n-1,x) ).expand()
+    return ( - sp.diff(HermiteTensor(idx[:-1],x),x[idx[-1] ] ) + x[idx[-1] ]*HermiteTensor( idx[:-1],x) ).expand()
 
 def simplifyKronecker(exp, sumcancel = True):
     
