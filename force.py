@@ -64,9 +64,24 @@ for n in range(N+1):
     feq += a_eq(idx) * H( idx ) / sp.factorial(n)
 
 Fneq = S.Zero
-N = 3
+N = 4
 for n in range(1,N+1):
     idx = tuple( map( a, np.arange(1,n+1) ) ) 
     Fneq += af * g[idx[0] ] * a_neq(idx[1:]) * H( idx ) / sp.factorial(n)
+Fneq = simplifyByPermutation( replaceIndeces(  simplifyDeviatoric( simplifyKronecker(Fneq ), A) ), A)
+
+Feq = S.Zero
+N = 2
+for n in range(1,N+1):
+    idx = tuple( map( a, np.arange(1,n+1) ) ) 
+    Feq += af * g[idx[0] ] * a_eq(idx[1:]) * H( idx ) / sp.factorial(n)
+Feq = simplifyByPermutation( replaceIndeces(  simplifyDeviatoric( simplifyKronecker(Feq ), A) ), A)
+
+Feq = S.Zero
+N = 2
+for n in range(1,N+1):
+    idx = tuple( map( a, np.arange(1,n+1) ) ) 
+    Feq += af * g[idx[0] ] * a_eq(idx[1:]) * H( idx ) / sp.factorial(n)
+Feq = simplifyByPermutation( replaceIndeces(  simplifyDeviatoric( simplifyKronecker(Feq ), A) ), A)
 
 

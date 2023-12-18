@@ -271,7 +271,40 @@ def replaceIndeces( exp , idxDict = None):
     
     return exp
 
+def newReplaceIndeces( exp , idxDict = None, human = True):
 
+    if (exp.func == sp.Add ):
+        idxDict  = { t: '{}replace'.format(n) for n,t in enumerate( [ tuple(sorted(x, key = lambda x : x.name )) for x in combinations_with_replacement( getIndexed( exp ), 2) ] ) }
+        newexp = sp.Add( *[ replaceIndeces(arg, idxDict = idxDict, human = False) for arg in exp.args] )        
+
+    elif (exp.func == sp.Mul ):
+        idxCount = { idx : 0 for idx in idxDict.values() } 
+        indices = [ k for x in exp.free_symbols if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]               
+        bases   = [ x.base for x in exp.free_symbols if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]               
+        replace = [ idx for idx, num in Counter( indices ).items() if num == 2 ]
+        
+        tempIdx = [ ]
+        for idx in replace:
+            pair = tuple( sorted( ( bases[n] for n,symbol in enumerate(indices) if symbol == idx ) , key = lambda x : x.name )  )
+            idxCount[ idxDict[ pair  ]  ] += 1
+            tempIdx.append( IdxEin( idxDict[ pair  ] + "_{}".format( idxCount[ idxDict[ pair  ]  ] ) ) )          
+        newexp = unroll(  exp.xreplace( { old: new for old,new in zip(replace,tempIdx) }  ) )
+                               
+    if (human):
+        nonHumanIndices = { k for x in newexp.free_symbols if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) if k.name.find("replace") > 0 }                   
+        allEinIndices      = [ k for x in newexp.free_symbols if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]                   
+        subs = { }
+        n = 0
+        for idx in nonHumanIndices:
+            while True:
+                n += 1
+                newidx = IdxEin("\\alpha_{}".format(n))
+                if newidx not in allEinIndices: break
+            subs[ idx ] = newidx
+        return newexp.xreplace( subs )
+    else:          
+        return newexp
+    
 def simplifyD( exp , constants = () ):
 
     if isinstance(exp,sp.Matrix):
@@ -323,3 +356,11 @@ def splitSum( term, index, var = None):
         return sp.expand( sp.Mul( *keep )  ) 
 
     return sp.Mul( term , S.One , evaluate=False)  
+
+def simplifyByPermutation( exp, tensor):
+    subdict = { x : x.base[ sorted( x.indices , key = lambda i : i.name ) ]  for x in exp.free_symbols if x.is_Indexed if x.base == tensor }
+    return exp.subs( subdict )
+
+def simplifyDeviatoric( exp, tensor ):
+    subdict = { x : S.Zero  for x in exp.free_symbols if x.is_Indexed if x.base == tensor if len(x.indices) == 2 if x.indices[0] == x.indices[1]}
+    return exp.subs( subdict )
