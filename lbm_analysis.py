@@ -26,6 +26,7 @@ T = sp.symbols("\\Theta", real = True)
 
 u = IndexedBase("u")
 x = IndexedBase("x")
+g = IndexedBase("g")
 t = sp.Symbol("t", real = True, positive = True)
 
 a  = lambda n : IdxEin("\\alpha_{}".format(n), range=(1,Dim) )
@@ -34,12 +35,16 @@ e  = lambda n : IdxEin("\\eta_{}".format(n), range=(1,Dim) )
 
 c = IndexedBase("c")
 mc = lambda n : rho* computeMoment( sp.expand( sp.Mul( *[ sp.sqrt(T) * cs* c[a(k)] + u[a(k)] for k in range(1,n+1) ] ) ) , c , a(1) )
+force =  lambda n : rho * computeMoment( simplifyKronecker( g[b(1)] * sp.diff( sp.Mul( *[ c[ a(n) ] + u[a(n)]  for n in range(1,n+1) ]) , c[b(1)] ) ) , c, a(1) )
 
-m = sp.Matrix( [ mc(i) for i in range(0,5) ] )
-F = sp.Matrix( [ 0 for i in range(0,5) ] )
+
+m = sp.Matrix( [   mc(i) for i in range(0,5) ] )
 
 NumOfMoments = len(m)
 ConservedMoments = 3
+
+def F(n):
+    return sp.Matrix( [ force(i) for i in range(0,n) ] )    
 
 def M(n):
     M = np.zeros( [ 3,  n ] , dtype = object)
@@ -63,11 +68,13 @@ n = len(m)
 MLJ = simplifyKronecker( M(n-1) @ L(n) @ J( b(1) , n  ) ).subs( { dk( b(1), a(1)) : 1 } ).xreplace( { b(1) : a(1) } )
 #MUJ = simplifyKronecker( M(n-1) @ U(n) @ J( b(1) , n  ) ).subs( { dk( b(1), a(1)) : 1 } ).xreplace( { b(1) : a(1) } )
 MUJ = simplifyKronecker( M(n-1) @ U(n) @ J( b(1) , n  ) )
-TG = lambda bt = b(1), et = e(1) : simplifyKronecker( - MLJ.inv() @ MUJ ).xreplace( { a(1) : bt, e(1) : et } )
+#TG = lambda bt = b(1), et = e(1) : simplifyKronecker( - MLJ.inv() @ MUJ ).xreplace( { a(1) : bt, e(1) : et } )
 
 grad = D( sp.Matrix( [ rho, u[b(1)] , T ] ) , x[ e(1) ]  )
-dt1 = simplifyKronecker( TG(b(1)) @ grad )
+#dt1 = simplifyKronecker( TG(b(1)) @ grad )
 
-O = simplifyKronecker( ( - L(5) @ J(b(2), 5) @ simplifyKronecker( (MLJ.inv() @ MUJ ) ).xreplace( { a(1) : b(2) } ) + U( 5, e(1) ) @ J( b(1), 5 ) ) @ grad )
-- coeff(1) / ttau *simplifyKronecker( (MLJ.inv() @ MUJ ).xreplace( { a(1) : b(1) } ) @ grad ) - coeff(2) / ttau * simplifyKronecker( MLJ.inv() @ M(3) @ simplifyD( D( simplifyKronecker( U(4, e(2) ) @  O ), x[e(2)] ) )   )
+#O = simplifyKronecker( ( - L(5) @ J(b(2), 5) @ simplifyKronecker( (MLJ.inv() @ MUJ ) ).xreplace( { a(1) : b(2) } ) + U( 5, e(1) ) @ J( b(1), 5 ) ) @ grad )
+#- coeff(1) / ttau *simplifyKronecker( (MLJ.inv() @ MUJ ).xreplace( { a(1) : b(1) } ) @ grad ) - coeff(2) / ttau * simplifyKronecker( MLJ.inv() @ M(3) @ simplifyD( D( simplifyKronecker( U(4, e(2) ) @  O ), x[e(2)] ) )   )
 
+dt0 = simplifyKronecker( MLJ.inv() @ M(n) @ F(n) ) - simplifyKronecker( MLJ.inv() @ MUJ  @ grad )
+O = simplifyKronecker( L(n) @ J(b(2), n) @ dt0.xreplace( { a(1) : b(2) } ) ) + simplifyKronecker( ( U(n, e(1) ) @ J( b(2), n) @ grad.xreplace( { b(1) : b(2) } ) ) ) 

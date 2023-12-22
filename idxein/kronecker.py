@@ -109,7 +109,8 @@ class Indexed(sp.Indexed):
 
 class IndexedBase( sp.IndexedBase):
 
-    def __getitem__(self, indices, **kw_args):
+    def __getitem__(self, indices, symmetric = False, **kw_args):
+      self.isSymetric = symmetric
       item = super().__getitem__(indices, **kw_args)
       return Indexed(self, *item.indices, **kw_args)
 
@@ -275,7 +276,7 @@ def newReplaceIndeces( exp , idxDict = None, human = True):
 
     if (exp.func == sp.Add ):
         idxDict  = { t: '{}replace'.format(n) for n,t in enumerate( [ tuple(sorted(x, key = lambda x : x.name )) for x in combinations_with_replacement( getIndexed( exp ), 2) ] ) }
-        newexp = sp.Add( *[ replaceIndeces(arg, idxDict = idxDict, human = False) for arg in exp.args] )        
+        newexp = sp.Add( *[ newReplaceIndeces(arg, idxDict = idxDict, human = False) for arg in exp.args] )        
 
     elif (exp.func == sp.Mul ):
         idxCount = { idx : 0 for idx in idxDict.values() } 
