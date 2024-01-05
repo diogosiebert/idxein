@@ -226,6 +226,25 @@ def computeMoment(exp, variable, index):
         return unroll( sp.Mul( *keep ) )
     else:
         return computeMoment( sp.Mul( term , S.One , evaluate=False) , variable, index)
+
+def computeMoment(exp, variable, index = None):
+    
+    term = exp.expand()    
+    if ( term.func == sp.Add ):
+        return  simplifyKronecker( sp.Add( *(  computeMoment(arg, variable, index) for arg in term.args) ) )
+    
+    term = unroll(exp)
+    if (term.func == sp.Mul ):
+        if (index != None):
+            replace = [ arg for arg in term.args if isinstance(arg, Indexed) if (arg.base == variable) if isinstance(arg.indices[0],IdxEin) if arg.indices[0].compatible(index) ]
+        else:
+            replace = [ arg for arg in term.args if isinstance(arg, Indexed) if (arg.base == variable)  ]
+            
+        keep    = [ arg for arg in term.args if not( arg in replace ) ]
+        keep.append( isotropicTensor( *[ arg.indices[0]  for arg in replace ] ) )
+        return unroll( sp.Mul( *keep ) )
+    else:
+        return computeMoment( sp.Mul( term , S.One , evaluate=False) , variable, index)
     
 def getIndexed( x ):    
     if ( isinstance(x,Indexed) ):
@@ -280,8 +299,8 @@ def newReplaceIndeces( exp , idxDict = None, human = True):
 
     elif (exp.func == sp.Mul ):
         idxCount = { idx : 0 for idx in idxDict.values() } 
-        indices = [ k for x in exp.free_symbols if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]               
-        bases   = [ x.base for x in exp.free_symbols if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]               
+        indices = [ k for x in exp.args if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]               
+        bases   = [ x.base for x in exp.args if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]               
         replace = [ idx for idx, num in Counter( indices ).items() if num == 2 ]
         
         tempIdx = [ ]
