@@ -293,14 +293,31 @@ def replaceIndeces( exp , idxDict = None):
 
 def newReplaceIndeces( exp , idxDict = None, human = True):
 
-    if (exp.func == sp.Add ):
-        idxDict  = { t: '{}replace'.format(n) for n,t in enumerate( [ tuple(sorted(x, key = lambda x : x.name )) for x in combinations_with_replacement( getIndexed( exp ), 2) ] ) }
+    if (idxDict == None):
+        idxDict  = { t: '{}replace'.format(n) for n,t in enumerate( [ tuple(sorted(x, key = lambda x : x.name )) for x in combinations_with_replacement( getIndexed( exp ), 2) ] ) }    
+    
+    if (exp.func == sp.Add ):        
         newexp = sp.Add( *[ newReplaceIndeces(arg, idxDict = idxDict, human = False) for arg in exp.args] )        
 
     elif (exp.func == sp.Mul ):
         idxCount = { idx : 0 for idx in idxDict.values() } 
-        indices = [ k for x in exp.args if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]               
-        bases   = [ x.base for x in exp.args if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]               
+        indices = []
+        bases = []
+        for x in exp.args:
+            if x.is_Indexed:
+                for k in x.indices:
+                    if isinstance(k,IdxEin):
+                        indices.append(k)
+                        bases.append(x.base)
+            elif isinstance(x,sp.Derivative):
+                for y in x.variables+ (x.expr , ) :
+                    if y.is_Indexed:
+                        for k in y.indices:
+                            if isinstance(k,IdxEin):
+                                indices.append(k)
+                                bases.append(y.base)
+        #indices = [ k for x in exp.args if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]               
+        #bases   = [ x.base for x in exp.args if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]               
         replace = [ idx for idx, num in Counter( indices ).items() if num == 2 ]
         
         tempIdx = [ ]
