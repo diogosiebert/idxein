@@ -56,15 +56,21 @@ delta = sp.Symbol(r"\delta")
 cc = sp.Symbol("cc")
 uu = sp.Symbol("uu")
 cu = sp.Symbol("cu")
+bc = sp.Symbol("bc")
+bb = sp.Symbol("bb")
 
 afactor = sp.Symbol("a")
 a2tt1 = afactor**2 * TT - 1
 
-ifeq = unroll( sp.expand(  sp.nsimplify( rho * ( 1. +  cu + (1./2.)*(  cu * cu  -  uu + a2tt1 * ( cc - 3)) + (1./6.) *  cu * (  cu * cu - 3. *  uu + 3. * a2tt1  * ( cc - 5. ))  + (15./8.) * a2tt1  * a2tt1  + (5./4.)*a2tt1  *  uu + (1./8.) *  uu * uu - (7./4.)*a2tt1  *  cu * cu - (1./4.) *  uu * cu * cu - (5./4.) * a2tt1 *a2tt1 *  cc - (1./4.) * a2tt1  *  uu * cc + (1./4.)*a2tt1  *  cu * cu * cc + (1./28.) *  uu * cu * cu * cc + (1./8.)*a2tt1 *a2tt1 *  cc * cc - (1./280.) *  uu * uu * cc * cc ) ).subs( {  cc**2 :  xi[b(1)]*xi[b(1)]*xi[b(2)]*xi[b(2)]  }  ).subs( {  cc :  xi[b(3)]*xi[b(3)]  }  ).subs( {  cu**2 :  afactor**2 * xi[b(4)]*u[b(4)]*xi[b(5)]*u[b(5)]  }  ).subs( {  cu : afactor *xi[b(6)]*u[b(6)]  }  ).subs( {  uu**2 :  afactor**4 * u[b(7)]*u[b(7)]*u[b(8)]*u[b(8)] }  ).subs( {  uu : afactor** 2 * u[b(9)]*u[b(9)] }  ) ) ) 
+ifeq  = unroll( sp.expand(  sp.nsimplify( rho * ( 1. +  cu + (1./2.)*(  cu * cu  -  uu + a2tt1 * ( cc - 3)) + (1./6.) *  cu * (  cu * cu - 3. *  uu + 3. * a2tt1  * ( cc - 5. ))  + (15./8.) * a2tt1  * a2tt1  + (5./4.)*a2tt1  *  uu + (1./8.) *  uu * uu - (7./4.)*a2tt1  *  cu * cu - (1./4.) *  uu * cu * cu - (5./4.) * a2tt1 *a2tt1 *  cc - (1./4.) * a2tt1  *  uu * cc + (1./4.)*a2tt1  *  cu * cu * cc + (1./28.) *  uu * cu * cu * cc + (1./8.)*a2tt1 *a2tt1 *  cc * cc - (1./280.) *  uu * uu * cc * cc ) ).subs( {  cc**2 :  xi[b(1)]*xi[b(1)]*xi[b(2)]*xi[b(2)]  }  ).subs( {  cc :  xi[b(3)]*xi[b(3)]  }  ).subs( {  cu**2 :  afactor**2 * xi[b(4)]*u[b(4)]*xi[b(5)]*u[b(5)]  }  ).subs( {  cu : afactor *xi[b(6)]*u[b(6)]  }  ).subs( {  uu**2 :  afactor**4 * u[b(7)]*u[b(7)]*u[b(8)]*u[b(8)] }  ).subs( {  uu : afactor** 2 * u[b(9)]*u[b(9)] }  ) ) ) 
+ifeqB = unroll( sp.expand(  sp.nsimplify( (1./2.) * ((1./2.) * bb * cc - bc * bc) - (1./4.) *  bb -  (3./12.) * ((1./2.) *  bb *  cc * (cc - 7) + (3./2.) * bb * (5 - cc) - bc * bc * ( cc - 7) -  bb * (5 - cc)) ) ).subs( {  bc**2 : afactor** 2 * B[b(4)]*xi[b(4)]* B[b(3)]*xi[b(3)] }  ).subs( {  cc**2 :  xi[b(3)]*xi[b(3)]*xi[b(4)]*xi[b(4)]  }  ).subs( {  cc :  xi[b(5)]*xi[b(5)]  }  ).subs( {  bb : afactor** 2 * B[b(6)]*B[b(6)] }  ) )
+
 mc = lambda n : unroll( computeMoment( ifeq * (S.One if n == 0 else np.prod( [ xi[a(k)] / afactor for k in range(1,n+1) ] ) ), xi ) )
+mcB = lambda n : unroll( computeMoment( ifeqB * (S.One if n == 0 else np.prod( [ xi[a(k)] / afactor for k in range(1,n+1) ] ) ), xi ) )
 
 idx = lambda n : [ a(i) for i in range(1,n+1) ]
-m = sp.Matrix( [   mc(i) for i in range(0,5) ] )
+m = sp.Matrix( [   mc(i) + mcB(i) for i in range(0,5) ] )
+# m = sp.Matrix( [   mc(i)  for i in range(0,5) ] )
 
 def F(n):
     return sp.Matrix( [ 0 for i in range(0,n) ] )    
@@ -84,13 +90,14 @@ def U(n, et = e(1) ):
     np.fill_diagonal( U[:,1:], [ dk(a(k),et ) for k in range(1,n) ] )
     return sp.Matrix(U)
 
-var = lambda b : [rho, u[b] , TT ] 
-J = lambda b, n = None  : ( m if n == None else sp.Matrix( m[:n] ) ).jacobian(  var(b) )
+#var = lambda b : sp.Matrix( [rho, u[b] , TT , B[b] ]  )
+var = lambda b : sp.Matrix( [rho, u[b] , TT , B[b]  ]  )
 
+J = lambda b, n = None  : ( m if n == None else  m[:n]  ).jacobian(  var(b) )
 
 MLJ = simplifyKronecker( M( len(m) - 1 ) @ L( len(m) )  @ m.jacobian( var( b(1) ) ) ).subs( { dk( a(1), b(1)) : 1 } ).xreplace( { b(1) : a(1) } )
 MUJ = simplifyKronecker( M( len(m) -1  ) @ U( len(m) ) @ J( b(1) ) )
-grad = D( sp.Matrix( [ rho, u[b(1)] , TT ] ) , x[ e(1) ]  )
+grad = D(  var( b(1) )  , x[ e(1) ]  )
 dt0 = simplifyKronecker( - MLJ.inv() @ MUJ  @ grad ).xreplace( { a(1) : b(1) } )
 
 MDO = simplifyKronecker( M(len(m) - 2) @ U( len(m) - 1 , e(2) ) @ ( L( len(m) ) @ J( b(1) ) @ dt0 + U( len(m) , e(1) ) @ J( b(1) ) @ grad ) )
