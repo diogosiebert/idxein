@@ -93,17 +93,22 @@ def U(n, et = e(1) ):
 #var = lambda b : sp.Matrix( [rho, u[b] , TT , B[b] ]  )
 var = lambda b : sp.Matrix( [rho, u[b] , TT , B[b]  ]  )
 
-J = lambda b, n = None  : ( m if n == None else  m[:n]  ).jacobian(  var(b) )
+J = lambda b = b(1), n = None  : m.jacobian( var( b ) )[:n,:]
 
-MLJ = simplifyKronecker( M( len(m) - 1 ) @ L( len(m) )  @ m.jacobian( var( b(1) ) ) ).subs( { dk( a(1), b(1)) : 1 } ).xreplace( { b(1) : a(1) } )
-MUJ = simplifyKronecker( M( len(m) -1  ) @ U( len(m) ) @ J( b(1) ) )
+
+MLJ = simplifyKronecker( M( len(m) - 1 ) @ L( len(m) )  @ J(b(1)) ) .subs( { dk( a(1), b(1)) : 1 } ).xreplace( { b(1) : a(1) } )
+MLJB = sp.Matrix.vstack(MLJ, sp.Matrix( [[ 0 , 0 , 0, 1 ] ] )  )
+
+MUJ  = simplifyKronecker( M( len(m) -1  ) @ U( len(m) )  @ J( b(1) ) )
+MUJB = sp.Matrix.vstack( MUJ, sp.Matrix( [ u[ e(1) ] * B[ a(1) ] -  B[ e(1) ] * u[ a(1) ]   ] ).jacobian( var( b(1) ) ) )
+
 grad = D(  var( b(1) )  , x[ e(1) ]  )
-dt0 = simplifyKronecker( - MLJ.inv() @ MUJ  @ grad ).xreplace( { a(1) : b(1) } )
 
-MDO = simplifyKronecker( M(len(m) - 2) @ U( len(m) - 1 , e(2) ) @ ( L( len(m) ) @ J( b(1) ) @ dt0 + U( len(m) , e(1) ) @ J( b(1) ) @ grad ) )
+dt0B  = - simplifyKronecker( MLJB.inv() @ simplifyKronecker( MUJB @ grad ) ).xreplace( { a(2) : b(3) , b(1) : b(2) }).xreplace( { a(1) : b(1) })
+# dt0B =  sp.Matrix( [ *dt0, D( u[b(1)], x[e(1)] ) * B[e(1)] + u[b(1)] * D( B[e(1)] , x[e(1)] ) - D(  u[e(1)] , x[e(1)] ) * B[b(1)] -   u[e(1)]  * D( B[b(1)] , x[e(1)] )]).xreplace( { a(2) : b(3) }  )
 
-
-
+O = simplifyKronecker( L(5) @ J( b(1) ) @ dt0B +  U( 5, e(1) ) @ J ( b(1) ) @ grad )
+U
 
 # PI_ab0 = sp.Matrix( [ mc(2)] ).jacobian( [rho, u[b(2)] , B[b(2)] ] ) @ ( dt0B.xreplace( { a(1) : b(2) } ) )
 # PI_ab0 = simplifyKronecker(  sp.expand( PI_ab0[0] ) )

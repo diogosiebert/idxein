@@ -106,6 +106,8 @@ class Indexed(sp.Indexed):
             for index1, index2 in zip(self.indices, wrt.indices):
                 result *= KroneckerDelta(index1, index2)
             return result
+        else:
+            return S.Zero
 
 class IndexedBase( sp.IndexedBase):
 
