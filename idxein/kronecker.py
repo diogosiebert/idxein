@@ -106,10 +106,13 @@ class Indexed(sp.Indexed):
             for index1, index2 in zip(self.indices, wrt.indices):
                 result *= KroneckerDelta(index1, index2)
             return result
+        else:
+            return S.Zero
 
 class IndexedBase( sp.IndexedBase):
 
-    def __getitem__(self, indices, **kw_args):
+    def __getitem__(self, indices, symmetric = False, **kw_args):
+      self.isSymetric = symmetric
       item = super().__getitem__(indices, **kw_args)
       return Indexed(self, *item.indices, **kw_args)
 
@@ -225,6 +228,25 @@ def computeMoment(exp, variable, index):
         return unroll( sp.Mul( *keep ) )
     else:
         return computeMoment( sp.Mul( term , S.One , evaluate=False) , variable, index)
+
+def computeMoment(exp, variable, index = None):
+    
+    term = exp.expand()    
+    if ( term.func == sp.Add ):
+        return  simplifyKronecker( sp.Add( *(  computeMoment(arg, variable, index) for arg in term.args) ) )
+    
+    term = unroll(exp)
+    if (term.func == sp.Mul ):
+        if (index != None):
+            replace = [ arg for arg in term.args if isinstance(arg, Indexed) if (arg.base == variable) if isinstance(arg.indices[0],IdxEin) if arg.indices[0].compatible(index) ]
+        else:
+            replace = [ arg for arg in term.args if isinstance(arg, Indexed) if (arg.base == variable)  ]
+            
+        keep    = [ arg for arg in term.args if not( arg in replace ) ]
+        keep.append( isotropicTensor( *[ arg.indices[0]  for arg in replace ] ) )
+        return unroll( sp.Mul( *keep ) )
+    else:
+        return computeMoment( sp.Mul( term , S.One , evaluate=False) , variable, index)
     
 def getIndexed( x ):    
     if ( isinstance(x,Indexed) ):
@@ -273,14 +295,31 @@ def replaceIndeces( exp , idxDict = None):
 
 def newReplaceIndeces( exp , idxDict = None, human = True):
 
-    if (exp.func == sp.Add ):
-        idxDict  = { t: '{}replace'.format(n) for n,t in enumerate( [ tuple(sorted(x, key = lambda x : x.name )) for x in combinations_with_replacement( getIndexed( exp ), 2) ] ) }
-        newexp = sp.Add( *[ replaceIndeces(arg, idxDict = idxDict, human = False) for arg in exp.args] )        
+    if (idxDict == None):
+        idxDict  = { t: '{}replace'.format(n) for n,t in enumerate( [ tuple(sorted(x, key = lambda x : x.name )) for x in combinations_with_replacement( getIndexed( exp ), 2) ] ) }    
+    
+    if (exp.func == sp.Add ):        
+        newexp = sp.Add( *[ newReplaceIndeces(arg, idxDict = idxDict, human = False) for arg in exp.args] )        
 
     elif (exp.func == sp.Mul ):
         idxCount = { idx : 0 for idx in idxDict.values() } 
-        indices = [ k for x in exp.free_symbols if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]               
-        bases   = [ x.base for x in exp.free_symbols if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]               
+        indices = []
+        bases = []
+        for x in exp.args:
+            if x.is_Indexed:
+                for k in x.indices:
+                    if isinstance(k,IdxEin):
+                        indices.append(k)
+                        bases.append(x.base)
+            elif isinstance(x,sp.Derivative):
+                for y in x.variables+ (x.expr , ) :
+                    if y.is_Indexed:
+                        for k in y.indices:
+                            if isinstance(k,IdxEin):
+                                indices.append(k)
+                                bases.append(y.base)
+        #indices = [ k for x in exp.args if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]               
+        #bases   = [ x.base for x in exp.args if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]               
         replace = [ idx for idx, num in Counter( indices ).items() if num == 2 ]
         
         tempIdx = [ ]
