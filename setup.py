@@ -4,7 +4,7 @@ setup(
     name='idxein',
     version='0.1',
     packages=find_packages(),
-    install_requires=[ "numpy", "scipy" , "itertools"],  # add any dependencies here
+    install_requires=[ "numpy", "scipy" ],  # add any dependencies here
     author='Diogo Nardelli Siebert',
     author_email='diogo.siebert@ufsc.br',
     description='A small package for index notation using the Einsten Sum Convention',
