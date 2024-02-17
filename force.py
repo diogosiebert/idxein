@@ -16,12 +16,14 @@ rho, tt, cs = sp.symbols("\\rho, \\theta, c_s", real = True)
 T = sp.symbols("\\Theta", real = True)
 
 u = IndexedBase("u")
+xi = IndexedBase("\\xi")
 x = IndexedBase("x")
 t = sp.Symbol("t", real = True, positive = True)
 c = IndexedBase("c")
 g = IndexedBase("g")
+B = IndexedBase("B")
 af = sp.Symbol("a")
-A = IndexedBase("a")
+A = IndexedBase("a", symmetric = True)
 i = sp.Idx("i")
 
 a  = lambda n : IdxEin("\\alpha_{}".format(n), range=(1,Dim) )
@@ -49,39 +51,45 @@ def computeMomentNeq(exp, variable, index):
         return computeMoment( sp.Mul( term , S.One , evaluate=False) , variable, index)
 
 Dim = 3
-
 N = 3
-idx = tuple( a(n) for n in range(1,N+1)  )
+idx = lambda N : tuple( a(n) for n in range(1,N+1)  )
 
-H = lambda idx : HermiteTensor( idx  ,  x ).subs(  { x[ k ] : af * c[ k ] for k in idx } ) 
-a_eq = lambda idx : rho * computeMoment( HermiteTensor(  idx  , x ).subs(  { x[ k ] :  (sp.sqrt( tt) * c[ k ] + af * u[ k ] )  for k in idx } ) , c, a(1) if len(idx) == 0 else idx[0]  )
-a_neq = lambda idx : computeMomentNeq( HermiteTensor(  idx  , x ).subs(  { x[ k ] :  (sp.sqrt( tt) * c[ k ] + af * u[ k ] )  for k in idx } ) , c, a(1) if len(idx) == 0 else idx[0]  )
+a_f   = lambda idx : rho if len(idx)==0 else (rho * u[idx] if len(idx)==1 else A[idx])
+a_eq  = lambda idx : rho * computeMoment( HermiteTensor(  idx  , x ).subs(  { x[ k ] :  (sp.sqrt( tt)*xi[ k ] + u[ k ] )  for k in idx } ) , c, a(1) if len(idx) == 0 else idx[0]  )
+a_neq = lambda idx :       computeMomentNeq( HermiteTensor(  idx  , x ).subs(  { x[ k ] :  (sp.sqrt( tt) * xi[ k ] + u[ k ] )  for k in idx } ) , c, a(1) if len(idx) == 0 else idx[0]  )
+H = lambda idx : HermiteTensor( idx  ,  x ).subs(  { x[ k ] : xi[ k ] for k in idx } ) 
 
-feq = S.Zero
-N = 2
-for n in range(N+1):
-    idx = tuple( map( a, np.arange(1,n+1) ) ) 
-    feq += a_eq(idx) * H( idx ) / sp.factorial(n)
+F = sum( [ a_f(idx(n+1)[1:] ) * (xi[b(1) ] - u[ b(1) ] ) * B[b(2)] * sp.LeviCivita( b(1), b(2), a(1) ) *  H( idx(n+1) )/ sp.factorial(n) for n in range(0,3) ] )
 
-Fneq = S.Zero
-N = 4
-for n in range(1,N+1):
-    idx = tuple( map( a, np.arange(1,n+1) ) ) 
-    Fneq += af * g[idx[0] ] * a_neq(idx[1:]) * H( idx ) / sp.factorial(n)
-Fneq = simplifyByPermutation( replaceIndeces(  simplifyDeviatoric( simplifyKronecker(Fneq ), A) ), A)
+# H = lambda idx : HermiteTensor( idx  ,  x ).subs(  { x[ k ] : af * c[ k ] for k in idx } ) 
+# a_eq = lambda idx : rho * computeMoment( HermiteTensor(  idx  , x ).subs(  { x[ k ] :  (sp.sqrt( tt) * c[ k ] + af * u[ k ] )  for k in idx } ) , c, a(1) if len(idx) == 0 else idx[0]  )
+# a_neq = lambda idx : computeMomentNeq( HermiteTensor(  idx  , x ).subs(  { x[ k ] :  (sp.sqrt( tt) * c[ k ] + af * u[ k ] )  for k in idx } ) , c, a(1) if len(idx) == 0 else idx[0]  )
 
-Feq = S.Zero
-N = 2
-for n in range(1,N+1):
-    idx = tuple( map( a, np.arange(1,n+1) ) ) 
-    Feq += af * g[idx[0] ] * a_eq(idx[1:]) * H( idx ) / sp.factorial(n)
-Feq = simplifyByPermutation( replaceIndeces(  simplifyDeviatoric( simplifyKronecker(Feq ), A) ), A)
+# # feq = S.Zero
+# N = 2
+# for n in range(N+1):
+#     idx = tuple( map( a, np.arange(1,n+1) ) ) 
+#     feq += a_eq(idx) * H( idx ) / sp.factorial(n)
 
-Feq = S.Zero
-N = 2
-for n in range(1,N+1):
-    idx = tuple( map( a, np.arange(1,n+1) ) ) 
-    Feq += af * g[idx[0] ] * a_eq(idx[1:]) * H( idx ) / sp.factorial(n)
-Feq = simplifyByPermutation( replaceIndeces(  simplifyDeviatoric( simplifyKronecker(Feq ), A) ), A)
+# Fneq = S.Zero
+# N = 4
+# for n in range(1,N+1):
+#     idx = tuple( map( a, np.arange(1,n+1) ) ) 
+#     Fneq += af * g[idx[0] ] * a_neq(idx[1:]) * H( idx ) / sp.factorial(n)
+# Fneq = simplifyByPermutation( newReplaceIndeces(  simplifyDeviatoric( simplifyKronecker(Fneq ), A) ), A)
+
+# Feq = S.Zero
+# N = 2
+# for n in range(1,N+1):
+#     idx = tuple( map( a, np.arange(1,n+1) ) ) 
+#     Feq += af * g[idx[0] ] * a_eq(idx[1:]) * H( idx ) / sp.factorial(n)
+# Feq = simplifyByPermutation( newReplaceIndeces(  simplifyDeviatoric( simplifyKronecker(Feq ), A) ), A)
+
+# Feq = S.Zero
+# N = 2
+# for n in range(1,N+1):
+#     idx = tuple( map( a, np.arange(1,n+1) ) ) 
+#     Feq += af * g[idx[0] ] * a_eq(idx[1:]) * H( idx ) / sp.factorial(n)
+# Feq = simplifyByPermutation( newReplaceIndeces(  simplifyDeviatoric( simplifyKronecker(Feq ), A) ), A)
 
 

@@ -10,6 +10,26 @@ import sympy as sp
 from idxein import *
 import numpy as np
 
+
+rho, tt, cs = sp.symbols("\\rho, \\theta, c_s", real = True)
+i = sp.Idx("i")
+w = sp.IndexedBase("w")
+u_o = IndexedBase("u_o")
+u = IndexedBase("u")
+xi_o = IndexedBase("\\xi_o")
+x = IndexedBase("x")
+t = sp.Symbol("t", real = True, positive = True)
+c = IndexedBase("c")
+TT = sp.Symbol("\\Theta")
+
+idx = lambda n : [ a(i) for i in range(1,n+1) ]
+
+feq = S.Zero
+for n in range(3):
+    H = HermiteTensor( idx(n), xi_o )
+    A = computeMoment( H.subs( { xi_o[k] : sp.sqrt(TT+1)*c[k] + u_o[k] for k in idx(n) } )  , c , a(1) )
+    feq +=  A*H / sp.factorial(n)     
+
 dk = KroneckerDelta
 
 Dim = 2
@@ -36,7 +56,6 @@ e  = lambda n : IdxEin("\\eta_{}".format(n), range=(1,Dim) )
 c = IndexedBase("c")
 mc = lambda n : rho* computeMoment( sp.expand( sp.Mul( *[ sp.sqrt(T) * cs* c[a(k)] + u[a(k)] for k in range(1,n+1) ] ) ) , c , a(1) )
 force =  lambda n : rho * computeMoment( simplifyKronecker( g[b(1)] * sp.diff( sp.Mul( *[ c[ a(n) ] + u[a(n)]  for n in range(1,n+1) ]) , c[b(1)] ) ) , c, a(1) )
-
 
 m = sp.Matrix( [   mc(i) for i in range(0,5) ] )
 

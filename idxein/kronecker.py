@@ -171,7 +171,7 @@ def simplifyKronecker(exp, sumcancel = True):
             
              for arg in newexp.args:
                  indices = getEinsteinIndices( arg.args )
-                 counts = Counter( indices )
+                 /
                  sumIndices = sumIndices.union( [element for element, count in counts.items() if count == 2] )           
                 
              sumIndices = sorted( list( sumIndices) , key = lambda x: x.name )
@@ -403,3 +403,16 @@ def simplifyByPermutation( exp, tensor):
 def simplifyDeviatoric( exp, tensor ):
     subdict = { x : S.Zero  for x in exp.free_symbols if x.is_Indexed if x.base == tensor if len(x.indices) == 2 if x.indices[0] == x.indices[1]}
     return exp.subs( subdict )
+
+def sumEin( exp ): 
+  unrolled = unroll( sp.expand( exp ) )
+  newargs = []
+  for arg in unrolled.args:
+    indices = getEinsteinIndices(arg.args )
+    count = Counter( indices )
+    repeated = [element for element, count in count.items() if count == 2]
+    if len( repeated ) != 0:
+        newargs.append( sp.summation( arg, *repeated ) )
+    else:
+        newargs.append( arg )
+  return sp.Add( *newargs )
