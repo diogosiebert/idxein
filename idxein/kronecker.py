@@ -171,7 +171,6 @@ def simplifyKronecker(exp, sumcancel = True):
             
              for arg in newexp.args:
                  indices = getEinsteinIndices( arg.args )
-                 /
                  sumIndices = sumIndices.union( [element for element, count in counts.items() if count == 2] )           
                 
              sumIndices = sorted( list( sumIndices) , key = lambda x: x.name )
