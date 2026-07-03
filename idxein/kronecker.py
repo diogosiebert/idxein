@@ -44,6 +44,7 @@ def unroll(a):
 
   return sp.Mul( *newargs , evaluate = False )
 
+
 class IdxEin(sp.tensor.indexed.Idx):
 
   def __new__(cls, label, range=None, **kw_args):
@@ -93,7 +94,7 @@ class KroneckerDelta( sp.KroneckerDelta ):
            return False
        return True
 
-class Indexed(sp.Indexed):
+class IndexedEin(sp.Indexed):
 
     def _eval_derivative(self, wrt):
 
@@ -109,12 +110,12 @@ class Indexed(sp.Indexed):
         else:
             return S.Zero
 
-class IndexedBase( sp.IndexedBase):
+class IndexedEinBase( sp.IndexedBase):
 
     def __getitem__(self, indices, symmetric = False, **kw_args):
       self.isSymetric = symmetric
       item = super().__getitem__(indices, **kw_args)
-      return Indexed(self, *item.indices, **kw_args)
+      return IndexedEin(self, *item.indices, **kw_args)
 
 class D(Derivative):
 
@@ -148,6 +149,45 @@ def getEinsteinIndices(args):
       else:
           idxList +=  getEinsteinIndices(arg.args)
     return idxList
+
+
+
+def doEinsteinSum( term , myList = None , squared = True):
+
+    if (term.is_Matrix):
+      for y in term:
+        term = term.subs( { y : doEinsteinSum(y, myList) } )
+      return term
+
+    term = term.expand()
+
+    if (term.func == sp.core.add.Add):
+        for arg in term.args:
+           term = term.subs( {arg : doEinsteinSum(arg, myList)} )
+    else:
+      term = pow_to_mul(term)
+      indices = getEinsteinIndices(term.args)
+      for index, count in Counter(indices).items():
+        if (count == 2) and (myList == None):
+          term = sp.Sum( term, index ).doit( deep = False)
+        elif (count == 2) and (index in myList):
+          term = sp.Sum( term, index ).doit( deep = False)
+        if (count  >  2 ):
+          raise ValueError(f"More then two {index.name} index in term")
+
+    return term
+
+def pow_to_mul(expr):
+    """
+    Convert integer powers in an expression to Muls, like a**2 => a*a.
+    """
+
+    pows = list( filter( lambda x : x.args[1] > 0, expr.atoms(sp.Pow)  ) )
+
+    if any(not e.is_Integer for b, e in (i.as_base_exp() for i in pows)):
+        raise ValueError("A power contains a non-integer exponent")
+    repl = zip(pows, ( sp.UnevaluatedExpr( sp.Mul( * [b]*e , evaluate = False)   ) for b,e in (i.as_base_exp() for i in pows)))
+    return expr.subs(repl)
 
 def HermiteTensor( idx , x):
   if ( len(idx)==0):  return S.One
@@ -214,21 +254,6 @@ def isotropicTensor( *args ):
     
     return tensor
         
-def computeMoment(exp, variable, index):
-    
-    term = exp.expand()    
-    if ( term.func == sp.Add ):
-        return  simplifyKronecker( sp.Add( *(  computeMoment(arg, variable, index) for arg in term.args) ) )
-    
-    term = unroll(exp)
-    if (term.func == sp.Mul ):
-        replace = [ arg for arg in term.args if isinstance(arg, Indexed) if (arg.base == variable) if isinstance(arg.indices[0],IdxEin) if arg.indices[0].compatible(index) ]
-        keep    = [ arg for arg in term.args if not( arg in replace ) ]
-        keep.append( isotropicTensor( *[ arg.indices[0]  for arg in replace ] ) )
-        return unroll( sp.Mul( *keep ) )
-    else:
-        return computeMoment( sp.Mul( term , S.One , evaluate=False) , variable, index)
-
 def computeMoment(exp, variable, index = None):
     
     term = exp.expand()    
@@ -238,9 +263,9 @@ def computeMoment(exp, variable, index = None):
     term = unroll(exp)
     if (term.func == sp.Mul ):
         if (index != None):
-            replace = [ arg for arg in term.args if isinstance(arg, Indexed) if (arg.base == variable) if isinstance(arg.indices[0],IdxEin) if arg.indices[0].compatible(index) ]
+            replace = [ arg for arg in term.args if isinstance(arg, IndexedEin) if (arg.base == variable) if isinstance(arg.indices[0],IdxEin) if arg.indices[0].compatible(index) ]
         else:
-            replace = [ arg for arg in term.args if isinstance(arg, Indexed) if (arg.base == variable)  ]
+            replace = [ arg for arg in term.args if isinstance(arg, IndexedEin) if (arg.base == variable)  ]
             
         keep    = [ arg for arg in term.args if not( arg in replace ) ]
         keep.append( isotropicTensor( *[ arg.indices[0]  for arg in replace ] ) )
@@ -249,12 +274,12 @@ def computeMoment(exp, variable, index = None):
         return computeMoment( sp.Mul( term , S.One , evaluate=False) , variable, index)
     
 def getIndexed( x ):    
-    if ( isinstance(x,Indexed) ):
+    if ( isinstance(x,IndexedEin) ):
         return { x.base }
     elif (x.args != None):
         result = set()
         for arg in x.args:
-            base = getIndexed(arg)
+            base = getIndexedEin(arg)
             if (base != None):
                 result = result.union( base )
         return result    
@@ -268,82 +293,29 @@ def createIndex( symbol, myrange , n):
 
 greek = [r"\alpha",r"\beta",r"\gamma",r"\eta",r"\nu",r"\mu",r"\xi"]    
 
-def replaceIndeces( exp , idxDict = None):
+def replaceIndices(expr, subs):
 
-    if (exp.func == sp.Add ):
-        idxDict  = { t: greek[n] for n,t in enumerate( [ tuple(sorted(x, key = lambda x : x.name )) for x in combinations_with_replacement( getIndexed( exp ), 2) ] ) }
-        return sp.Add( *[ replaceIndeces(arg, idxDict = idxDict) for arg in exp.args] )
-        
-    if (exp.func == sp.Mul ):
-        idxCount = { idx : 0 for idx in idxDict.values() } 
-        indices = np.array( [ arg.indices[0] if isinstance(arg,Indexed) else None for arg in exp.args ] )
-        bases   = np.array( [ arg.base   if isinstance(arg,Indexed) else None for arg in exp.args ] )
-        
-        subsDict = {}
-        for idx in set( indices ).difference( {None} ):
-            pair = tuple( sorted( bases[ np.where( indices == idx )[0] ] ,  key =  lambda x : x.name ) )
-            if (pair in idxDict.keys() ):                                 
-                idxsymbol = idxDict[ tuple( sorted( bases[ np.where( indices == idx )[0] ] ,  key =  lambda x : x.name ) ) ]
-                idxRange = ( idx.lower, idx.upper )
-                idxCount[idxsymbol] += 1
-                newIdx = createIndex( idxsymbol,  idxRange, idxCount[idxsymbol] )
-                subsDict[idx] = newIdx
-            
-        return unroll(  exp.xreplace( subsDict ) )
-    
-    return exp
+    # Qualquer objeto que possua índices
+    if hasattr(expr, "indices"):
 
-def newReplaceIndeces( exp , idxDict = None, human = True):
+        new_indices = tuple(subs.get(i, i) for i in expr.indices)
 
-    if (idxDict == None):
-        idxDict  = { t: '{}replace'.format(n) for n,t in enumerate( [ tuple(sorted(x, key = lambda x : x.name )) for x in combinations_with_replacement( getIndexed( exp ), 2) ] ) }    
-    
-    if (exp.func == sp.Add ):        
-        newexp = sp.Add( *[ newReplaceIndeces(arg, idxDict = idxDict, human = False) for arg in exp.args] )        
+        # Indexed
+        if isinstance(expr, IndexedEin):
+            return expr.base[new_indices]
 
-    elif (exp.func == sp.Mul ):
-        idxCount = { idx : 0 for idx in idxDict.values() } 
-        indices = []
-        bases = []
-        for x in exp.args:
-            if x.is_Indexed:
-                for k in x.indices:
-                    if isinstance(k,IdxEin):
-                        indices.append(k)
-                        bases.append(x.base)
-            elif isinstance(x,sp.Derivative):
-                for y in x.variables+ (x.expr , ) :
-                    if y.is_Indexed:
-                        for k in y.indices:
-                            if isinstance(k,IdxEin):
-                                indices.append(k)
-                                bases.append(y.base)
-        #indices = [ k for x in exp.args if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]               
-        #bases   = [ x.base for x in exp.args if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]               
-        replace = [ idx for idx, num in Counter( indices ).items() if num == 2 ]
-        
-        tempIdx = [ ]
-        for idx in replace:
-            pair = tuple( sorted( ( bases[n] for n,symbol in enumerate(indices) if symbol == idx ) , key = lambda x : x.name )  )
-            idxCount[ idxDict[ pair  ]  ] += 1
-            tempIdx.append( IdxEin( idxDict[ pair  ] + "_{}".format( idxCount[ idxDict[ pair  ]  ] ) ) )          
-        newexp = unroll(  exp.xreplace( { old: new for old,new in zip(replace,tempIdx) }  ) )
-                               
-    if (human):
-        nonHumanIndices = { k for x in newexp.free_symbols if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) if k.name.find("replace") > 0 }                   
-        allEinIndices      = [ k for x in newexp.free_symbols if x.is_Indexed for k in x.indices if isinstance(k,IdxEin) ]                   
-        subs = { }
-        n = 0
-        for idx in nonHumanIndices:
-            while True:
-                n += 1
-                newidx = IdxEin("\\alpha_{}".format(n))
-                if newidx not in allEinIndices: break
-            subs[ idx ] = newidx
-        return newexp.xreplace( subs )
-    else:          
-        return newexp
-    
+        # KroneckerDelta
+        elif isinstance(expr, KroneckerDelta):
+            return KroneckerDelta(*new_indices)
+
+    if not expr.args:
+        return expr
+
+    return expr.func(*[
+        replaceIndices(arg, subs)
+        for arg in expr.args
+    ])
+
 def simplifyD( exp , constants = () ):
 
     if isinstance(exp,sp.Matrix):
@@ -377,7 +349,7 @@ def splitSum( term, index, var = None):
     
     if (exp.func == sp.Mul ):
         exp = unroll(exp)
-        replace = [ arg for arg in exp.args if (isinstance(arg,Indexed) ) if ( arg.indices[0].compatible(index) )]
+        replace = [ arg for arg in exp.args if (isinstance(arg,IndexedEin) ) if ( arg.indices[0].compatible(index) )]
         keep    = [ arg for arg in exp.args if not( arg in replace ) ]
         indices = [ arg.indices[0]  for arg in replace ]
         
