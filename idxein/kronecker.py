@@ -189,10 +189,10 @@ def pow_to_mul(expr):
     repl = zip(pows, ( sp.UnevaluatedExpr( sp.Mul( * [b]*e , evaluate = False)   ) for b,e in (i.as_base_exp() for i in pows)))
     return expr.subs(repl)
 
-def HermiteTensor( idx , x):
-  if ( len(idx)==0):  return S.One
+def HermiteTensor(n,x, a):
+  if (n==0):  return S.One
   else:
-    return ( - sp.diff(HermiteTensor(idx[:-1],x),x[idx[-1] ] ) + x[idx[-1] ]*HermiteTensor( idx[:-1],x) ).expand()
+    return ( - sp.diff(HermiteTensor(n-1,x,a),x[a(n)]) + x[a(n)]*HermiteTensor(n-1,x,a) ).expand()
 
 def simplifyKronecker(exp, sumcancel = True):
     
@@ -375,3 +375,64 @@ def simplifyByPermutation( exp, tensor):
 def simplifyDeviatoric( exp, tensor ):
     subdict = { x : S.Zero  for x in exp.free_symbols if x.is_Indexed if x.base == tensor if len(x.indices) == 2 if x.indices[0] == x.indices[1]}
     return exp.subs( subdict )
+
+def dot(a, b, format="latex"):
+
+    if format == "c":
+        if a == b:
+            return sp.Symbol(f"{a.name}{a.name}".replace("\\", ""))
+        else:
+            return sp.Symbol(f"{a.name}{b.name}".replace("\\", ""))
+
+    elif format == "latex":
+        if a != b:
+            return sp.Symbol(
+                "(\\boldsymbol{{{}}}\\cdot\\boldsymbol{{{}}})".format(
+                    a.name, b.name
+                )
+            )
+        else:
+            return sp.Symbol(
+                "(\\boldsymbol{{{}}}\\cdot\\boldsymbol{{{}}})".format(
+                    a.name, a.name
+                )
+            )
+
+def einsteinToProduct(term, index=None, format = "latex"):
+
+    if term.func == sp.Add:
+        return sp.Add(*(einsteinToProduct(arg, index, format = format) for arg in term.args))
+
+    if term.func != sp.Mul:
+        return term
+
+    indices = set()
+
+    for arg in term.args:
+        if isinstance(arg, IndexedEin):
+            for idx in arg.indices:
+                if isinstance(idx, IdxEin):
+                    if index is None or idx.compatible(index):
+                        indices.add(idx)
+
+    newargs = []
+    used = set()
+
+    for idx in indices:
+        pos = []
+
+        for n, arg in enumerate(term.args):
+            if isinstance(arg, IndexedEin) and idx in arg.indices:
+                pos.append(n)
+
+        if len(pos) == 2:
+            name0 = term.args[pos[0]].base
+            name1 = term.args[pos[1]].base
+            newargs.append(dot(name0, name1, format = format))
+            used.update(pos)
+
+    for n, arg in enumerate(term.args):
+        if n not in used:
+            newargs.append(arg)
+
+    return sp.Mul(*newargs)
