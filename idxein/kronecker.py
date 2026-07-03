@@ -98,7 +98,7 @@ class IndexedEin(sp.Indexed):
 
     def _eval_derivative(self, wrt):
 
-        if isinstance(wrt, Indexed) and wrt.base == self.base:
+        if isinstance(wrt, IndexedEin) and wrt.base == self.base:
             if len(self.indices) != len(wrt.indices):
                 msg = "Different # of indices: d({!s})/d({!s})".format(self,
                                                                        wrt)
