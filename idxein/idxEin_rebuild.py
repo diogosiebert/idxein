@@ -20,32 +20,41 @@ sp.init_printing()
 
 class IdxEin(sp.tensor.indexed.Idx):
 
-    def __new__(cls, label,generator_label=None, number = None, range=None, **kw_args):
-        
+    def __new__(cls, label , range=None, **kw_args):
+
       if (range == None):
           range = (1,3)
-          
-      obj = super().__new__(cls,label, range=range, **kw_args)
-      obj.number = number 
-      obj.generator_label = generator_label
+
+      obj = super().__new__(cls, label, range, **kw_args)
+
+      strlabel = str(label)
+      sep = strlabel.find("_")
+      if ( sep != -1 ):
+          obj.number = int(strlabel[sep+2:-1])
+          obj.generator_label = strlabel[:sep]
+          obj.range = range
+      else:
+          obj.number = None
+          obj.generator_label = None
+          obj.range = range          
       return obj
-    
+
     def _latex(self, printer):
         # Customize the LaTeX representation of the Derivative object here
         return f'{self.name}'
-    
+
     def compatible(self, other):
         return (
             isinstance(other, IdxEin)
             and self.lower == other.lower
             and self.upper == other.upper
         )
-    
+
     def dimension(self):
-        return self.upper - self.lower + 1    
+        return self.upper - self.lower + 1
 
 class IdxEinGenerator:
-    
+
     def __init__(self, label, index_range=None):
 
         self.label = label
@@ -55,9 +64,9 @@ class IdxEinGenerator:
         label = rf"{self.label}_{{{n}}}"
 
         if self.index_range is None:
-            return IdxEin(label, number = n )
+            return IdxEin(label )
 
-        return IdxEin(label, generator_label=self.label, number = n,  range=self.index_range)
+        return IdxEin(label, range=self.index_range)
 
     def __getitem__(self, key):
         # Caso simples: alpha[1]
@@ -141,7 +150,7 @@ class IndexedEin(sp.Indexed):
         symmetric_groups=(),
         antisymmetric_groups=(),
         **kwargs,
-    ):        
+    ):
         normalized_indices = list(indices)
         sign = S.One
 
@@ -233,7 +242,7 @@ class IndexedEin(sp.Indexed):
             return result
 
         return super()._eval_derivative(wrt)
-    
+
 class IndexedBaseEin( sp.IndexedBase):
 
     def __getitem__(self, indices, symmetric = False, antisymmetric = False, **kw_args):
@@ -284,35 +293,106 @@ class KroneckerDeltaEin(IndexedEin):
             symmetric_groups=((0, 1),),
             **kwargs,
         )
-    
+
     def _rebuild(self, base, indices):
     # O base é fixo e não faz parte da assinatura pública
     # de KroneckerDeltaEin.
         return type(self)(*indices)
-       
+
 def expandPow(a):
-  a = sp.expand(a)
-  newargs = []
-
-  if isinstance(a ,sp.Add):
-      return sp.Add( *[ expandPow(arg) for arg in a.args ] )
-
-  if isinstance(a ,sp.Mul):
-    for arg in a.args:
-      if ( isinstance(arg ,(sp.Mul,sp.Pow) ) ):
-        newargs += list( expandPow(arg).args )
-      else:
-        newargs.append(arg)
-  elif isinstance(a,sp.Pow):
-      b,e = a.as_base_exp()
-      if ( e.is_Integer ):
-        newargs +=  e*[b]
-      else:
+    a = sp.expand(a)
+    
+    if isinstance(a ,sp.Add):          
+        return sp.Add( *[ expandPow(arg) for arg in a.args ] )
+  
+    elif isinstance(a ,sp.Mul):
+        newargs = []
+        for arg in a.args:
+            if isinstance(arg ,sp.Mul):
+                newargs +=  expandPow(arg).args
+            elif isinstance(arg ,sp.Pow):
+                b,e = arg.as_base_exp()
+                if isinstance(b, IndexedEin):
+                    newargs += expandPow(arg).args
+                else:
+                    newargs.append(arg)
+            else:
+                newargs.append(arg)
+        return sp.Mul( *newargs , evaluate = False )
+        
+    elif isinstance(a, sp.Pow):
+          b,e = a.as_base_exp()
+          if isinstance(b, IndexedEin):
+              return sp.Mul( *( e*[b]) , evaluate = False )
+          else:
+              return a
+    else:
         return a
-  else:
-      return a
 
-  return sp.Mul( *newargs , evaluate = False )
+def getIdxEin(args):
+    idxList = []
+    for arg in args:
+      if hasattr(arg, "indices"): idxList+= filter( lambda x : isinstance(x,IdxEin) ,arg.indices )
+      idxList +=   getIdxEin(arg.args)
+    return idxList
+
+def normalizeIdxEin(
+    exp,
+    dummy_label = r"\beta",
+):
+    exp = sp.expand(exp)
+    
+    if isinstance(exp, sp.Add):
+        return sp.Add(*[
+            normalizeIdxEin(term, dummy_label =  dummy_label)
+            for term in exp.args
+        ])
+
+    exp = expandPow(exp)
+    sortedArgs = sorted( exp.args, key = lambda arg : hash( arg.base if isinstance(arg, IndexedEin)  else arg  )  )
+    indices = getIdxEin( sortedArgs )
+    counts = Counter(indices)   
+
+    dummy_indices = { k : IdxEinGenerator(f"temp", index_range = k.range)[n] for n,(k,v) in enumerate(counts.items()) if v == 2 }
+    used_indices  = [ k for k,v in counts.items() if v == 1 ]
+   
+    substitutions = {}
+    for oldidx in dummy_indices.keys():       
+
+        if (oldidx.generator_label != None):        
+            generator_label = oldidx.generator_label
+        else:
+            generator_label = dummy_label
+        
+        n = 1        
+        while (True):
+            newidx = IdxEinGenerator(generator_label, index_range= oldidx.range )[n]
+            if newidx in used_indices:
+                n = n+1
+            else:
+                substitutions[ dummy_indices[oldidx] ] = newidx
+                used_indices.append( newidx )
+                break
+
+    return expandPow( exp.subs( dummy_indices).subs( substitutions ) )
+
+def simplifyEin(exp):
+     expanded = expandPow( exp )
+
+     if ( expanded.func == sp.Add ):
+         return expandPow( sp.simplify( sp.Add( *( simplifyEin(arg) for arg in expanded.args) ) ) )
+
+     countIndices = Counter( getIdxEin( expanded.args) )
+     
+     for n,arg in enumerate(expanded.args):                 
+         if isinstance(arg, KroneckerDeltaEin):                     
+             for n,idx in enumerate(arg.indices):
+                 if countIndices[idx] == 2:
+                    largs = list(expanded.args)
+                    largs.remove(arg)
+                    return  normalizeIdxEin( simplifyEin( sp.Mul(*largs).subs( { idx : arg.indices[(n+1)%2]}) ))
+                
+     return expanded
 
 def HermiteTensor( x, indices ):
   if len(indices) == 0:  return S.One
@@ -323,7 +403,6 @@ def HermiteTensorPhysics( x, indices ):
   if len(indices) == 0:  return S.One
   else:
     return ( - sp.diff(HermiteTensorPhysics(x, indices[:-1]),x[indices[-1]]) + 2*x[indices[-1]]*HermiteTensorPhysics(x, indices[:-1]) ).expand()
-
 
 def isotropicTensor( *args ):
 
@@ -340,7 +419,7 @@ def isotropicTensor( *args ):
 
 def computeMomentPhysics(exp, variable):
 
-    term = expandPow( exp ) 
+    term = expandPow( exp )
     if ( term.func == sp.Add ):
         return sp.Add( *(  computeMomentPhysics(arg, variable) for arg in term.args) )
 
@@ -349,252 +428,101 @@ def computeMomentPhysics(exp, variable):
         keep    = [ arg for arg in term.args if not( arg in replace ) ]
         indices = [ arg.indices[0]  for arg in replace ]
         keep.append( isotropicTensor( *indices  ) / sp.Pow(2, sp.Rational( len(indices), 2 ) ) )
-        return  expandPow( sp.Mul( *keep ) )
-    
-    if (term.func == IndexedEin ):        
-        if (term.base == variable):            
+        return expandPow( simplifyEin( sp.Mul( *keep ) ))
+
+    if (term.func == IndexedEin ):
+        if (term.base == variable):
             return S.Zero
-        
-    return term  
 
-def getIdxEin(args):
-    idxList = []
-    for arg in args:
-      if hasattr(arg, "indices"): idxList+= filter( lambda x : isinstance(x,IdxEin) ,arg.indices )
-      idxList +=   getIdxEin(arg.args)
-    return idxList
+    return term
 
-def simplifyEin(exp):
-     expanded = expandPow( exp )
+def dot(a, b, format="latex"):
 
-     if ( expanded.func == sp.Add ):
-         return sp.Add( *( simplifyEin(arg) for arg in expanded.args) )
+    if format == "c":
+        if a == b:
+            return sp.Symbol(f"{a.name}{a.name}".replace("\\", ""))
+        else:
+            return sp.Symbol(f"{a.name}{b.name}".replace("\\", ""))
 
-     for n,arg in enumerate(expanded.args):
-        if isinstance(arg, KroneckerDeltaEin):
-            otherArgs = expanded.args[:n] + expanded.args[n+1:]
-            otherIdx  = getIdxEin(otherArgs)
-            if arg.indices[0] in otherIdx:
-                return simplifyEin( sp.Mul(*otherArgs).subs( { arg.indices[0] : arg.indices[1]}) )
-            if arg.indices[1] in otherIdx:
-                return simplifyEin( sp.Mul(*otherArgs).subs( { arg.indices[1] : arg.indices[0]}) )
-     return expanded
+    elif format == "latex":
+        if a != b:
+            return sp.Symbol(
+                "(\\boldsymbol{{{}}}\\cdot\\boldsymbol{{{}}})".format(
+                    a.name, b.name
+                )
+            )
+        else:
+            return sp.Symbol(
+                "(\\boldsymbol{{{}}}\\cdot\\boldsymbol{{{}}})".format(
+                    a.name, a.name
+                )
+            )
 
-# sp.init_printing()
-
-D  = sp.symbols("D", integer = True, positive = True)
-alpha = IdxEinGenerator(r"\alpha", index_range= (1,D) )
-xi = IndexedBaseEin(r"\tilde \xi", real = True)
-z  = IndexedBaseEin(r"z", real = True)
-u  = IndexedBaseEin(r"\tilde u", real = True)
-q  = IndexedBaseEin(r"\tilde q", real = True)
-rho, tT = sp.symbols(r"\rho, \tilde{T}")
-tt = sp.symbols(r"\theta")
-Pr = sp.symbols("Pr")
-
-f = S.Zero
-N = 2
-phiS = 1  + (1-Pr) *4 * q[ alpha[N+1] ] * z[ alpha[N+1] ] / (5 * rho * sp.sqrt( tT**3 ) ) * (2 * z[ alpha[N+2] ] *z[ alpha[N+2] ] - D - 2 )
-
-
-for n in range(0,N+1):
-      H = HermiteTensorPhysics( xi, alpha[1:n] )
-      Hs = H.subs( { xi[ alpha[i+1] ] : z[alpha[i+1] ] * sp.sqrt(tT) + u[ alpha[i+1] ] for i in range(n)  } )
-      a =  computeMomentPhysics(  Hs * phiS , z  )  / 2**n 
-      f += 1/sp.factorial(n) * a * H
-
-
-def normalizeIndex(
+def checkIdxEin(
     exp,
-    dummy_label=None,
 ):
-
-    if dummy_label is None:
-        dummy_label = r"\beta"
-
     exp = sp.expand(exp)
 
     if isinstance(exp, sp.Add):
-        return sp.Add(*[
-            normalizeIndex(term, dummy_label =  dummy_label)
-            for term in exp.args
-        ])
+        freeindexes = checkIdxEin(exp.args[0])
+        for term in exp.args:
+            if (checkIdxEin(term) != freeindexes):
+              raise ValueError("IdxEin: Incompatible free indexes")
 
+        return freeindexes
     term = expandPow(exp)
+
 
     indices = getIdxEin(term.args)
     counts = Counter(indices)
 
-    dummy_indices = [
-        index
-        for index in counts
-        if counts[index] == 2
-    ]
+    dummy_indices = []
+    free_indices = []
+    gen_indices = {}
 
-    free_indices = [
-        index
-        for index in counts
-        if counts[index] == 1
-    ]
-
-    substitutions = {}
-    
-    dummy_count = 1
-    dummy = IdxEinGenerator(r"\beta")
-    
-    for oldidx in dummy_indices:
-        
-        if oldidx.number == None:            
-            newidx = dummy[dummy_count]
-            dummy_count += 1
+    for index in counts:
+        if counts[index] == 2 and (index not in dummy_indices):  dummy_indices.append(index)
+        elif counts[index] == 1 and (index not in free_indices): free_indices.append(index)
         else:
-            
-            
-        
-        substitutions[oldidx] = newidx
-                
-    if not dummy_indices:
+            raise ValueError("IdxEin: 3 repeated indexes")
+
+    return set(free_indices)
+
+def einsteinToProduct(term, index=None, format = "latex"):
+
+    if term.func == sp.Add:
+        return sp.Add(*(einsteinToProduct(arg, index, format = format) for arg in term.args))
+
+    if term.func != sp.Mul:
         return term
 
+    indices = set()
 
+    for arg in term.args:
+        if isinstance(arg, IndexedEin):
+            for idx in arg.indices:
+                if isinstance(idx, IdxEin):
+                    if index is None or idx.compatible(index):
+                        indices.add(idx)
 
-    # ---------------------------------------------------------
-    # Índices numerados: agrupamento por família e intervalo.
-    # ---------------------------------------------------------
-    numbered_dummies = [
-        index
-        for index in dummy_indices
-        if index.number is not None
-    ]
+    newargs = []
+    used = set()
 
-    numbered_families = {}
+    for idx in indices:
+        pos = []
 
-    for index in numbered_dummies:
-        family_key = (
-            index.generator_label,
-            index.lower,
-            index.upper,
-        )
+        for n, arg in enumerate(term.args):
+            if isinstance(arg, IndexedEin) and idx in arg.indices:
+                pos.append(n)
 
-        numbered_families.setdefault(
-            family_key,
-            [],
-        ).append(index)
+        if len(pos) == 2:
+            name0 = term.args[pos[0]].base
+            name1 = term.args[pos[1]].base
+            newargs.append(dot(name0, name1, format = format))
+            used.update(pos)
 
-    for family_key, family_dummies in numbered_families.items():
-        generator_label, lower, upper = family_key
+    for n, arg in enumerate(term.args):
+        if n not in used:
+            newargs.append(arg)
 
-        # Números que precisam permanecer reservados:
-        # índices da mesma família que não serão renomeados.
-        occupied_numbers = {
-            index.number
-            for index in counts
-            if (
-                index.number is not None
-                and index.generator_label == generator_label
-                and index.lower == lower
-                and index.upper == upper
-                and index not in family_dummies
-            )
-        }
-
-        # Ordem canônica independente dos números originais.
-        # Aqui, a ordem de aparição no termo define qual par
-        # recebe primeiro o menor número disponível.
-        ordered_dummies = []
-
-        for index in indices:
-            if (
-                index in family_dummies
-                and index not in ordered_dummies
-            ):
-                ordered_dummies.append(index)
-
-        candidate_number = 1
-
-        for old_index in ordered_dummies:
-            while candidate_number in occupied_numbers:
-                candidate_number += 1
-
-            new_label = rf"{generator_label}_{{{candidate_number}}}"
-
-            new_index = IdxEin(
-                new_label,
-                number=candidate_number,
-                generator_label=generator_label,
-                range=(lower, upper),
-            )
-
-            substitutions[old_index] = new_index
-            occupied_numbers.add(candidate_number)
-            candidate_number += 1
-
-    # ---------------------------------------------------------
-    # Índices não numerados: use o gerador dummy.
-    # ---------------------------------------------------------
-    unnumbered_dummies = [
-        index
-        for index in dummy_indices
-        if index.number is None
-    ]
-
-    ordered_unnumbered = []
-
-    for index in indices:
-        if (
-            index in unnumbered_dummies
-            and index not in ordered_unnumbered
-        ):
-            ordered_unnumbered.append(index)
-
-    # Evita colisão com índices já pertencentes à família dummy.
-    occupied_dummy_numbers = {
-        index.number
-        for index in counts
-        if (
-            index.number is not None
-            and index.generator_label == dummy.label
-        )
-    }
-
-    candidate_number = 1
-
-    for old_index in ordered_unnumbered:
-        while candidate_number in occupied_dummy_numbers:
-            candidate_number += 1
-
-        generated_index = dummy[candidate_number]
-
-        # O intervalo do índice substituto deve ser compatível
-        # com o intervalo do índice original.
-        if not old_index.compatible(generated_index):
-            generated_index = IdxEin(
-                rf"{dummy.label}_{{{candidate_number}}}",
-                number=candidate_number,
-                generator_label=dummy.label,
-                range=(
-                    old_index.lower,
-                    old_index.upper,
-                ),
-            )
-
-        substitutions[old_index] = generated_index
-        occupied_dummy_numbers.add(candidate_number)
-        candidate_number += 1
-
-    return term.subs (substitutions)
-
-
-    # dimensionedScalar vUnit("vUnit", dimLength/dimTime, 1);
-
-    # GeometricField<scalar, PatchType, GeoMesh> cSqrByRT 
-    #     = magSqr(U - xi_)/(R*T);
-
-    # GeometricField<scalar, PatchType, GeoMesh> cqBy5pRT 
-    #     = ((xi_ - U)&q)/(5.0*rho*R*T*R*T);
-
-    # GeometricField<scalar, PatchType, GeoMesh> gEqBGK 
-    #     = rho/pow(sqrt(2.0*pi*R*T),D)*exp(-cSqrByRT/2.0)/pow(vUnit, 3-D);
-
-    # gEq = ( 1.0 + (1.0 - Pr)*cqBy5pRT*(cSqrByRT - D - 2.0) )*gEqBGK;
-    # hEq = ( (K + 3.0 - D) + (1.0 - Pr)*cqBy5pRT*((cSqrByRT - D)*(K + 3.0 - D) - 2*K) )*gEqBGK*R*T;
+    return sp.Mul(*newargs)
